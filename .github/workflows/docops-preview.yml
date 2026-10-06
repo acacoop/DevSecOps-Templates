@@ -118,7 +118,7 @@ jobs:
             --jq '[.[] | select(.body | startswith("<!-- docops-preview-comment -->"))][0].id // empty')
 
           if [ -n "$EXISTING_ID" ]; then
-            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" -f body=@"$COMMENT_FILE"
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" -F body=@"$COMMENT_FILE"
           else
-            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body=@"$COMMENT_FILE"
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
           fi
