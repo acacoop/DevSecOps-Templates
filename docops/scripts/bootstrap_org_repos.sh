@@ -76,11 +76,12 @@ for REPO in "${REPOS[@]}"; do
 
     mkdir -p .github/workflows docs/manifest docs/generated
     cp "$TEMPLATE_DIR/consumer-workflow-example.yml" .github/workflows/docops-sync.yml
+    cp "$TEMPLATE_DIR/consumer-preview-workflow-example.yml" .github/workflows/docops-preview.yml
     cp "$TEMPLATE_DIR"/manifest/*.yml docs/manifest/ 2>/dev/null || true
     cp "$TEMPLATE_DIR"/generated/*.yml docs/generated/ 2>/dev/null || true
     cp "$TEMPLATE_DIR/README.md" docs/README.md
 
-    git add .github/workflows/docops-sync.yml docs/
+    git add .github/workflows/docops-sync.yml .github/workflows/docops-preview.yml docs/
     if git diff --cached --quiet; then
       echo "  (sin cambios reales para $REPO, se omite)"
       exit 0
@@ -96,7 +97,8 @@ for REPO in "${REPOS[@]}"; do
       --body "Este PR fue abierto automáticamente por el bootstrap de DocOps.
 
 Agrega:
-- \`.github/workflows/docops-sync.yml\`: invoca el pipeline reusable de [$TEMPLATES_REPO](https://github.com/$TEMPLATES_REPO) en cada push a main.
+- \`.github/workflows/docops-sync.yml\`: invoca el pipeline reusable de [$TEMPLATES_REPO](https://github.com/$TEMPLATES_REPO) en cada push a main (publica en Confluence).
+- \`.github/workflows/docops-preview.yml\`: comenta en cada PR contra main qué páginas cambiarían, sin publicar nada todavía.
 - \`docs/manifest/\` y \`docs/generated/\`: estructura estándar de documentación técnica versionada en Confluence.
 
 Antes de mergear, el equipo dueño de este repo debe:

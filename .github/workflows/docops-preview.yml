@@ -1,0 +1,124 @@
+name: DocOps - Preview docs changes on PR (reusable)
+
+# -----------------------------------------------------------------------------
+# Complemento de docops-sync.yml: NO publica nada en Confluence. Corre en
+# cada Pull Request contra main y deja (o actualiza) UN comentario único en
+# el PR con un resumen de qué páginas de documentación cambiarían si este
+# PR se mergea, para que el reviewer lo vea ANTES de aprobar.
+#
+# Por qué no publicar directo desde el PR: un PR puede quedar abierto días,
+# pedir cambios, o cerrarse sin mergear. Publicar en Confluence en ese
+# momento haría que la documentación "mienta" sobre el estado real de main.
+# El publish real sigue pasando solo en docops-sync.yml (push a main).
+#
+# Usa las mismas huellas (fingerprint) que docops-sync.yml, pero en modo
+# SOLO LECTURA contra Confluence (confluence_fingerprint.py --get), nunca
+# --set ni confluence_publish.py.
+# -----------------------------------------------------------------------------
+
+on:
+  workflow_call:
+    inputs:
+      root_page_title:
+        required: false
+        type: string
+        default: ""
+      templates_ref:
+        required: false
+        type: string
+        default: "main"
+    secrets:
+      CONFLUENCE_BASE_URL:
+        required: true
+      CONFLUENCE_EMAIL:
+        required: true
+      CONFLUENCE_API_TOKEN:
+        required: true
+      CONFLUENCE_SPACE_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      CONFLUENCE_BASE_URL: ${{ secrets.CONFLUENCE_BASE_URL }}
+      CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+      CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+      CONFLUENCE_SPACE_KEY: ${{ secrets.CONFLUENCE_SPACE_KEY }}
+      ROOT_TITLE: ${{ inputs.root_page_title || github.event.repository.name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout PR (merge preview)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout DevSecOps-Templates (scripts DocOps)
+        uses: actions/checkout@v4
+        with:
+          repository: acacoop/DevSecOps-Templates
+          ref: ${{ inputs.templates_ref }}
+          path: .docops-templates
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r .docops-templates/docops/scripts/requirements.txt
+
+      - name: Compute preview and post PR comment
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          COMMENT_FILE="/tmp/docops-preview-comment.md"
+          MARKER="<!-- docops-preview-comment -->"
+
+          echo "$MARKER" > "$COMMENT_FILE"
+          echo "### 📄 DocOps — preview de documentación (no publicado todavía)" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "Si este PR se mergea a \`main\`, esto es lo que pasaría con cada página de Confluence:" >> "$COMMENT_FILE"
+          echo "" >> "$COMMENT_FILE"
+          echo "| Página | Resultado |" >> "$COMMENT_FILE"
+          echo "|---|---|" >> "$COMMENT_FILE"
+
+          check_block () {
+            local title="$1"
+            shift
+            local local_fp
+            local_fp=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" "$@")
+            local remote_fp
+            remote_fp=$(python confluence_fingerprint.py --title "$title" --get)
+            if [ "$local_fp" = "$remote_fp" ] && [ -n "$remote_fp" ]; then
+              echo "| $title | ✅ Sin cambios |" >> "$COMMENT_FILE"
+            else
+              echo "| $title | 🔄 Se actualizaría |" >> "$COMMENT_FILE"
+            fi
+          }
+
+          check_block "1. Negocio" --include "docs/manifest/negocio.yml"
+          check_block "2. Desarrollo" --include "*" "**/*" --exclude "docs/**" "infra/**" ".github/**" "**/__pycache__/**" "**/node_modules/**" "**/.terraform/**"
+          check_block "3. Infraestructura declarada" --include "docs/manifest/infraestructura-declarada.yml"
+          check_block "4. Infraestructura relevada" --include "*.tf" "**/*.tf"
+          check_block "5. Modelado de amenaza (borrador)" --include "docs/generated/amenazas.yml"
+
+          echo "" >> "$COMMENT_FILE"
+          echo "_Esto es solo una vista previa: no se escribió nada en Confluence. La publicación real ocurre recién cuando este PR se mergea a main._" >> "$COMMENT_FILE"
+
+          EXISTING_ID=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- docops-preview-comment -->"))][0].id // empty')
+
+          if [ -n "$EXISTING_ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" -f body=@"$COMMENT_FILE"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" -f body=@"$COMMENT_FILE"
+          fi

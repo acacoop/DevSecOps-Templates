@@ -30,8 +30,24 @@ docops/
     ├── manifest/                  # (solo Jira escribe acá)
     ├── generated/                 # (solo el agente escribe acá)
     ├── README.md
-    └── consumer-workflow-example.yml
+    ├── consumer-workflow-example.yml           # publica en Confluence (push a main)
+    └── consumer-preview-workflow-example.yml    # comenta en PRs (no publica)
 ```
+
+## Dos workflows, dos momentos distintos
+
+- **`docops-sync.yml`** (push a main) = la única fuente de verdad que
+  escribe en Confluence. Garantiza que lo publicado siempre refleja el
+  estado real de `main`.
+- **`docops-preview.yml`** (cualquier PR contra main) = solo lee las
+  huellas ya publicadas y compara contra el contenido del PR, dejando un
+  comentario "esto cambiaría si se mergea". Nunca escribe en Confluence.
+
+Se decidió explícitamente NO publicar directo desde un PR (por ejemplo, de
+`test` a `main`): un PR puede quedar abierto días, pedir cambios, o
+cerrarse sin mergear, y publicar en ese momento haría que la documentación
+"mienta" sobre el estado real de producción. El merge del PR genera igual
+un push a `main`, que es el que dispara la publicación real.
 
 ## Cómo lo usa un repo consumidor
 
