@@ -12,9 +12,9 @@ name: DocOps - Bootstrap org repos (global rollout)
 # Disparadores:
 #   - Manual (workflow_dispatch), con un flag `dry_run` (default: true) para
 #     poder ver primero QUÉ repos se tocarían antes de abrir PRs de verdad.
-#   - El "schedule" semanal está incluido pero puede activarse recién
-#     cuando se decida pasar esto de "prueba" a "régimen" (ver docops/README.md,
-#     sección "Aplicación global", opción 2).
+#   - Schedule semanal (lunes 13:00 UTC): corre automáticamente para detectar
+#     repos nuevos creados en la organización y abrirles el PR de bootstrap,
+#     sin intervención manual.
 #
 # Requiere un secret de organización ORG_BOOTSTRAP_TOKEN: un Personal Access
 # Token (fine-grained) con acceso a TODOS los repos de la organización y
@@ -31,8 +31,8 @@ on:
         type: boolean
         required: false
         default: true
-  # schedule:
-  #   - cron: "0 13 * * 1"  # lunes 13:00 UTC — descomentar cuando se confirme pasar a régimen
+  schedule:
+    - cron: "0 13 * * 1"  # lunes 13:00 UTC (10:00 Argentina) — corrida semanal automática
 
 permissions:
   contents: read
