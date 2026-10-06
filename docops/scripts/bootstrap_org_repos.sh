@@ -31,6 +31,11 @@ ORG="${1:?Uso: bootstrap_org_repos.sh <org> <templates_repo> [--dry-run]}"
 TEMPLATES_REPO="${2:?falta <templates_repo>, ej. acacoop/DevSecOps-Templates}"
 DRY_RUN="${3:-}"
 
+# Lista opcional de repos a saltear SIEMPRE (no se les abre PR), separados
+# por coma, en formato "owner/repo". Ej:
+#   EXCLUDE_REPOS="acacoop/.github,acacoop/legacy-poc" ./bootstrap_org_repos.sh ...
+IFS=',' read -ra EXCLUDE_LIST <<< "${EXCLUDE_REPOS:-}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="$SCRIPT_DIR/../docs-template"
 WORKDIR="$(mktemp -d)"
@@ -53,6 +58,18 @@ echo
 for REPO in "${REPOS[@]}"; do
   if [ "$REPO" = "$TEMPLATES_REPO" ]; then
     echo "SKIP  $REPO (es el propio repo de templates)"
+    continue
+  fi
+
+  SKIP_EXCLUDED=false
+  for EXCLUDED in "${EXCLUDE_LIST[@]}"; do
+    if [ "$REPO" = "$EXCLUDED" ]; then
+      SKIP_EXCLUDED=true
+      break
+    fi
+  done
+  if [ "$SKIP_EXCLUDED" = true ]; then
+    echo "SKIP  $REPO (excluido explícitamente vía EXCLUDE_REPOS)"
     continue
   fi
 
