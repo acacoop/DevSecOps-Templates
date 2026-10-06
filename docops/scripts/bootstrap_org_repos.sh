@@ -88,8 +88,8 @@ for REPO in "${REPOS[@]}"; do
 
   echo "BOOTSTRAP  $REPO"
   REPO_DIR="$WORKDIR/$(basename "$REPO")"
-  gh repo clone "$REPO" "$REPO_DIR" -- --quiet
   if ! (
+    gh repo clone "$REPO" "$REPO_DIR" -- --quiet
     cd "$REPO_DIR"
     git checkout -b "$BRANCH_NAME"
 
