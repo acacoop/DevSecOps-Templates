@@ -1,0 +1,37 @@
+name: DocOps - Sync docs to Confluence
+
+# -----------------------------------------------------------------------------
+# Este archivo es el ÚNICO que cada repo necesita. Es un "wrapper" fino que
+# invoca el workflow reusable centralizado en acacoop/DevSecOps-Templates.
+# Toda la lógica real (escaneo, fingerprint, publicación) vive en un solo
+# lugar y se actualiza una sola vez para TODOS los repos que lo usan.
+#
+# Para adoptarlo en un repo nuevo:
+#   1. Copiar este archivo a .github/workflows/docops-sync.yml en el repo.
+#   2. Copiar la carpeta docops/docs-template/ de este repo a docs/ en el
+#      repo nuevo (da la estructura manifest/ + generated/ ya vista).
+#   3. Cargar los 4 secrets de Confluence en el repo nuevo:
+#        gh secret set CONFLUENCE_BASE_URL   --repo <org>/<repo> --body "..."
+#        gh secret set CONFLUENCE_EMAIL      --repo <org>/<repo> --body "..."
+#        gh secret set CONFLUENCE_API_TOKEN  --repo <org>/<repo> --body "..."
+#        gh secret set CONFLUENCE_SPACE_KEY  --repo <org>/<repo> --body "..."
+#      (o configurarlos a nivel organización/entorno para no repetir esto
+#      en cada repo — ver docops/README.md, sección "Aplicación global").
+#   4. Hacer push a main. El pipeline corre solo a partir de ahí.
+# -----------------------------------------------------------------------------
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  docops-sync:
+    uses: acacoop/DevSecOps-Templates/.github/workflows/docops-sync.yml@main
+    secrets:
+      CONFLUENCE_BASE_URL: ${{ secrets.CONFLUENCE_BASE_URL }}
+      CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+      CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+      CONFLUENCE_SPACE_KEY: ${{ secrets.CONFLUENCE_SPACE_KEY }}

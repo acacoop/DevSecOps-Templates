@@ -1,0 +1,50 @@
+# =============================================================================
+# BLOQUE: MODELADO DE AMENAZA
+# Quién lo completa: el agente (propuesta automática).
+# Cuándo se actualiza: push a main (código o infraestructura).
+#
+# ⚠️ ESTO NO ES UN THREAT MODEL APROBADO. Es una propuesta que debe validar
+# el equipo de ciberseguridad antes de considerarse oficial. Por eso lleva
+# el campo "validado_por_seguridad" explícito.
+# =============================================================================
+
+estado:
+  validado_por_seguridad: false
+  fecha_ultima_validacion: null
+
+activos_y_datos_sensibles:
+  - activo_logico: null
+    tipo: null
+    clasificacion_cia: null # Confidencialidad / Integridad / Disponibilidad
+    exposicion: null
+    evidencia: null
+
+amenazas_y_vectores_asociados:
+  - id: null
+    componente_o_flujo: null
+    categoria_stride: null
+    amenaza: null
+    nivel_estimado: null
+
+controles_y_mitigaciones_aplicadas:
+  - control: null
+    implementado: null
+    evidencia: null
+
+# Riesgos técnicos: puertos expuestos, librerías vulnerables, dependencias sin parchear.
+# Riesgos de proceso: ausencia de revisión de código, falta de segregación de entornos, roles débiles.
+# Riesgos operativos: monitoreo incompleto, backups inconsistentes, sin procedimiento de respuesta.
+riesgos_residuales_y_brechas_detectadas:
+  - riesgo: null
+    tipo: null
+    detalle: null
+    nivel_estimado: null
+    ticket: null
+
+trazabilidad_del_modelo:
+  version_del_modelo: null
+  autor_de_esta_revision: "Agente-doc"
+  fecha_de_revision: null
+  cambios_desde_revision_anterior: null
+  donde_se_versiona: "Confluence - página de Modelado de amenaza"
+  proxima_revision_formal: null

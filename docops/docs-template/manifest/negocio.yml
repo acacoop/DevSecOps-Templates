@@ -1,0 +1,50 @@
+# =============================================================================
+# BLOQUE: NEGOCIO
+# Quién lo completa: Área solicitante, a partir del ticket de Jira.
+# Cuándo se actualiza: al aprobar la iniciativa y en cada CHANGE.
+#
+# 🔒 ESTE ARCHIVO NO LO ESCRIBE EL AGENTE DE DOCUMENTACIÓN.
+# Lo sincroniza la integración Jira -> repo (pipeline separado). El workflow
+# de docs-sync.yml solo LEE este archivo para inyectarlo en Confluence;
+# si no existe o un campo está vacío, se publica como "No determinado desde Jira".
+# =============================================================================
+
+identificacion:
+  nombre_iniciativa: "{{jira.nombre_iniciativa}}"
+  area_solicitante: "{{jira.area_solicitante}}"
+  sponsor: "{{jira.sponsor}}"
+  responsable_funcional: "{{jira.responsable_funcional}}"
+  sistema_o_aplicacion_alcanzado: "{{jira.sistema}}"
+  fecha_solicitud: "{{jira.fecha_solicitud}}"
+  repositorio: "{{jira.repositorio}}"
+
+equipo:
+  equipo_desarrollo: "{{jira.equipo_desarrollo}}"
+  emails_desarrolladores: "{{jira.emails_desarrolladores}}"
+
+necesidad:
+  necesidad_o_problema: "{{jira.necesidad}}"
+  situacion_actual: "{{jira.situacion_actual}}"
+  funcionamiento_esperado: "{{jira.funcionamiento_esperado}}"
+
+procesos_impactados:
+  - proceso_impactado: "{{jira.procesos_impactados}}"
+    dueno_proceso: "{{jira.duenos_procesos}}"
+
+# Estos 5 campos determinan el nivel de impacto del proyecto y la exigencia
+# de las etapas 3 a 6 del procedimiento (ver documento origen).
+datos_y_exposicion:
+  datos_personales: "{{jira.datos_personales}}"
+  manejo_de_pago_o_tarjeta: "{{jira.datos_pago}}"
+  se_integra_con_sistemas_criticos: "{{jira.sistemas_criticos}}"
+  tipos_de_usuarios: "{{jira.tipo_usuario}}"
+  exposicion: "{{jira.exposicion}}"
+
+fecha_y_prioridad:
+  fecha_requerida: "{{jira.fecha_requerida}}"
+  motivo_de_la_fecha: "{{jira.motivo_fecha}}"
+  impacto_1_a_5: "{{jira.impacto}}"
+  urgencia_1_a_5: "{{jira.urgencia}}"
+  criticidad_1_a_5: "{{jira.criticidad}}"
+  alcance_1_a_5: "{{jira.alcance}}"
+  # El score final y la prioridad los calcula Jira; no se recalculan acá.

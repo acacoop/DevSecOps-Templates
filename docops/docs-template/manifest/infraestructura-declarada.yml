@@ -1,0 +1,51 @@
+# =============================================================================
+# BLOQUE: INFRAESTRUCTURA DECLARADA
+# Quién lo completa: quien levanta la infraestructura (equipo de Infra), vía Jira.
+# Cuándo se actualiza: al desplegar y en cada cambio de infraestructura.
+#
+# 🔒 ESTE ARCHIVO NO LO ESCRIBE EL AGENTE DE DOCUMENTACIÓN.
+# Es el "deber ser" declarado por el equipo de infra. Se contrasta (no se
+# sobreescribe) contra docs/generated/infraestructura-relevada.yml, que es lo
+# que el agente efectivamente encuentra en el código Terraform.
+#
+# NOTA: el documento origen (.docx) tiene un bloque casi duplicado llamado
+# "CAMPOS DE INFORMACIÓN: INFRAESTRUCTURA" con nombres de campo distintos
+# (ej. jira.infra_iniciativa vs jira.aplicacion). Se tomó este bloque como
+# canónico por ser el más completo; recomendar limpiar el duplicado en el
+# documento fuente.
+# =============================================================================
+
+identificacion:
+  iniciativa_o_aplicacion: "{{jira.aplicacion}}"
+  quien_levanto_la_infra: "{{jira.responsable_infra}}"
+  version_de_la_ficha: "{{jira.version_fecha}}"
+  fecha_del_despliegue: "{{jira.despliegue}}"
+  modelo: "{{jira.modelo}}" # Azure / On-premise / Híbrido
+  suscripcion_o_entornos_fisicos: "{{jira.descripcion_recursos}}"
+  que_esta_desplegado_fuera_de_tf: "{{jira.exclud_terraform}}"
+  proposito_recursos_principales: "{{jira.recursos_principales}}"
+
+arquitectura:
+  diagrama_de_arquitectura: "{{jira.diagrama_link}}"
+  version_y_fecha_del_diagrama: "{{jira.fecha_diagrama}}"
+  frontera_de_confianza_real: "{{jira.fronteras}}"
+
+bases_de_datos:
+  motor_version_y_donde_corre: "{{jira.info_bd}}"
+  como_se_provisiono: "{{jira.provision}}"
+  custodio: "{{jira.custodio_bd}}"
+  se_comparte_con_otras_aplicaciones: "{{jira.dependencias_bd}}"
+  cuales_son_esas_dependencias: "{{jira.especificacion_dep}}"
+  cifrado_en_reposo: "{{jira.cifrado_reposo}}"
+  backups_frecuencia_retencion: "{{jira.backup}}"
+
+entornos:
+  desarrollo_d: "{{jira.desarrollo_especificacion}}"
+  testing_t: "{{jira.testing_especificacion}}"
+  homologacion_h: "{{jira.homologacion_especificacion}}"
+  produccion_p: "{{jira.produccion_especificacion}}"
+  datos_reales_en_d_o_t: "{{jira.datos_entornos}}"
+
+excepciones:
+  excepciones: "{{jira.excepciones}}"
+  controles_incumplidos_y_justificacion: "{{jira.excepciones_justificacion}}"

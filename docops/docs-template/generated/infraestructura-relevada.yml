@@ -1,0 +1,54 @@
+# =============================================================================
+# BLOQUE: INFRAESTRUCTURA RELEVADA
+# Quién lo completa: el agente, a partir del relevamiento de los archivos .tf
+# del repositorio.
+# Cuándo se actualiza: push a main con cambio en los archivos .tf.
+#
+# 🤖 ESTE ARCHIVO SÍ LO ESCRIBE EL AGENTE. No editar a mano. Se contrasta
+# (no reemplaza) contra docs/manifest/infraestructura-declarada.yml.
+# =============================================================================
+
+trazabilidad:
+  ultimo_commit_relevado: null
+  huella_terraform: null # hash de todos los *.tf del repo; solo cambia si cambia la IaC
+  fecha_relevamiento: null
+
+tipologia_de_servidores_y_servicios:
+  - servicio: null
+    tipo_y_rol: null
+    recurso_terraform: null # ej. azurerm_container_group.vote_app
+    archivo: null # ej. infra/main.tf
+
+tecnologias_empleadas:
+  - capa: null
+    tecnologia_detectada: null
+    version: null
+    evidencia: null
+
+servicios_alcanzados_y_donde_operan:
+  - servicio: null
+    desarrollo_d: null
+    testing_t: null
+    homologacion_h: null
+    produccion_p: null
+    como_se_determino: null
+
+funciones_esenciales:
+  - funcion: null
+    presente: null
+    recurso_que_la_provee: null
+
+roles_y_responsabilidades:
+  - rol: null
+    quien: null
+    origen: null
+
+procesos_tecnologicos_clave:
+  - mecanismo: null
+    detectado_en_la_iac: null
+    evidencia: null
+
+integraciones_y_dependencias_de_plataforma:
+  - dependencia: null
+    detectada: null
+    recurso_o_configuracion: null

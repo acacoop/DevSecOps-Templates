@@ -1,0 +1,102 @@
+# =============================================================================
+# BLOQUE: DESARROLLO
+# Quién lo completa: el agente (escaneo automático de Copilot/Actions).
+# Cuándo se actualiza: push a main, cuando cambia la huella del código.
+#
+# 🤖 ESTE ARCHIVO SÍ LO ESCRIBE EL AGENTE. No editar a mano: se sobreescribe
+# en cada push a main que modifique código fuente. Lo que no se puede
+# verificar en el repositorio se completa como "No determinado desde el
+# repositorio" (nunca se inventa un valor).
+# =============================================================================
+
+trazabilidad:
+  ultimo_commit_relevado: null # se completa en cada ejecución del workflow
+  huella_codigo: null # hash de los paths relevantes (excluye docs/, .git)
+  fecha_relevamiento: null
+
+tipos_de_aplicaciones:
+  # Tipos alcanzados por el proyecto: portal web, app móvil, API pública o
+  # privada, backoffice, CRM/ERP, autogestión, etc.
+  - aplicacion: null
+    tipo: null
+    evidencia_en_repositorio: null
+
+tecnologias_de_desarrollo:
+  capa_lenguaje:
+    tecnologia: null
+    version: null
+    donde_se_detecto: null
+  capa_framework:
+    tecnologia: null
+    version: null
+    donde_se_detecto: null
+  capa_runtime:
+    tecnologia: null
+    version: null
+    donde_se_detecto: null
+  capa_gestor_de_paquetes:
+    tecnologia: null
+    version: null
+    donde_se_detecto: null
+
+# El agente deduce los ambientes de los pipelines y de la configuración.
+# Si no puede determinarlos, lo dice explícitamente: la tabla definitiva la
+# confirma infraestructura (ver infraestructura-declarada.yml).
+aplicaciones_alcanzadas_y_donde_operan:
+  - aplicacion: null
+    nueva_o_existente: null
+    desarrollo_d: null
+    testing_t: null
+    homologacion_h: null
+    produccion_p: null
+
+funciones_esenciales:
+  - funcion: null
+    implementada: null
+    donde: null
+
+roles_y_responsabilidades:
+  - rol: null
+    quien: null
+    origen_del_dato: null
+
+procesos_tecnologicos_clave:
+  - mecanismo: null
+    implementacion_detectada: null
+    archivo: null
+
+integracion_y_dependencias:
+  - integracion: null
+    tipo: null
+    sincronico_o_asincronico: null
+    red_o_ambiente: null
+    donde_aparece: null
+
+mapa_de_bases_de_datos:
+  tipos_de_bases_de_datos:
+    - base: null
+      tipo_de_gestor: null
+      evidencia: null
+  tecnologias_empleadas:
+    - motor: null
+      version: null
+      donde_se_detecto: null
+  # Si el motor no está declarado en la IaC ni en la configuración del
+  # repositorio, queda "No determinado desde el repositorio" y se toma el
+  # valor del bloque de infraestructura declarada (que lo define el equipo
+  # de infraestructura).
+  bases_alcanzadas_y_donde_operan:
+    - base_de_datos: null
+      desarrollo_d: null
+      testing_t: null
+      homologacion_h: null
+      produccion_p: null
+  procesos_tecnologicos_clave:
+    - mecanismo: null
+      implementacion_detectada: null
+      evidencia: null
+  integraciones_y_dependencias:
+    - que_consume_o_publica: null
+      tipo: null
+      red_o_ambiente: null
+      evidencia: null

@@ -1,0 +1,180 @@
+name: DocOps - Sync docs to Confluence (reusable)
+
+# -----------------------------------------------------------------------------
+# Workflow REUSABLE (workflow_call): no corre solo. Cualquier repo de la
+# organización lo invoca desde su propio workflow fino (ver
+# docops/docs-template/consumer-workflow-example.yml) pasando sus secrets de
+# Confluence. Así el pipeline de DocOps vive en UN solo lugar
+# (acacoop/DevSecOps-Templates) y cada repo solo "lo llama".
+#
+# Qué hace, por cada push a main del repo QUE LO INVOCA:
+#   1. Asegura que exista la página raíz del proyecto en Confluence
+#      (título = nombre del repo).
+#   2. Para cada uno de los 5 bloques de documentación, calcula una huella
+#      del contenido fuente relevante y la compara contra la huella ya
+#      publicada (guardada como content property en la propia página).
+#        - Sin cambios  -> se omite (no genera versiones vacías).
+#        - Con cambios  -> regenera y publica:
+#            * "2. Desarrollo" y "4. Infraestructura relevada": escaneo
+#              real (scan_code.py / scan_terraform.py) sobre el checkout
+#              del repo que invoca.
+#            * "1. Negocio", "3. Infraestructura declarada" y
+#              "5. Modelado de amenaza": se publica el YAML de docs/
+#              del repo que invoca, tal cual (lo completa Jira).
+#
+# Convención de carpetas esperada en el repo que invoca (ver
+# docops/docs-template/ en este mismo repo para el scaffolding inicial):
+#   docs/manifest/negocio.yml
+#   docs/manifest/infraestructura-declarada.yml
+#   docs/generated/desarrollo.yml
+#   docs/generated/infraestructura-relevada.yml
+#   docs/generated/amenazas.yml
+# -----------------------------------------------------------------------------
+
+on:
+  workflow_call:
+    inputs:
+      root_page_title:
+        description: "Título de la página raíz en Confluence. Default: nombre del repo que invoca."
+        required: false
+        type: string
+        default: ""
+      templates_ref:
+        description: "Ref (branch/tag) de DevSecOps-Templates del que se toman los scripts. Default: main."
+        required: false
+        type: string
+        default: "main"
+    secrets:
+      CONFLUENCE_BASE_URL:
+        required: true
+      CONFLUENCE_EMAIL:
+        required: true
+      CONFLUENCE_API_TOKEN:
+        required: true
+      CONFLUENCE_SPACE_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish-to-confluence:
+    runs-on: ubuntu-latest
+    env:
+      CONFLUENCE_BASE_URL: ${{ secrets.CONFLUENCE_BASE_URL }}
+      CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+      CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+      CONFLUENCE_SPACE_KEY: ${{ secrets.CONFLUENCE_SPACE_KEY }}
+      ROOT_TITLE: ${{ inputs.root_page_title || github.event.repository.name }}
+    steps:
+      - name: Checkout repo que invoca
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout DevSecOps-Templates (scripts DocOps)
+        uses: actions/checkout@v4
+        with:
+          repository: acacoop/DevSecOps-Templates
+          ref: ${{ inputs.templates_ref }}
+          path: .docops-templates
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r .docops-templates/docops/scripts/requirements.txt
+
+      - name: Ensure root project page exists
+        working-directory: .docops-templates/docops/scripts
+        run: |
+          echo "<p>Página raíz generada automáticamente por el pipeline DocOps para <b>${ROOT_TITLE}</b>.</p>" > /tmp/root.html
+          python confluence_publish.py --title "$ROOT_TITLE" --body-file /tmp/root.html
+
+      - name: Sync "1. Negocio" (manifest, solo si cambió)
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+        run: |
+          set -e
+          LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/manifest/negocio.yml")
+          REMOTE_FP=$(python confluence_fingerprint.py --title "1. Negocio" --get)
+          if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
+            echo "Sin cambios en negocio.yml, se omite publicación."
+          else
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/negocio.yml" --title "1. Negocio" --out /tmp/negocio.html
+            python confluence_publish.py --title "1. Negocio" --parent-title "$ROOT_TITLE" --body-file /tmp/negocio.html
+            python confluence_fingerprint.py --title "1. Negocio" --set "$LOCAL_FP"
+          fi
+
+      - name: Sync "2. Desarrollo" (escaneo de código, solo si cambió)
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+        run: |
+          set -e
+          LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" \
+            --include "*" "**/*" \
+            --exclude "docs/**" "infra/**" ".github/**" "**/__pycache__/**" "**/node_modules/**" "**/.terraform/**")
+          REMOTE_FP=$(python confluence_fingerprint.py --title "2. Desarrollo" --get)
+          if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
+            echo "Sin cambios en el código de la aplicación, se omite publicación."
+          else
+            python scan_code.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/desarrollo.yml \
+              --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
+            python yaml_to_confluence.py --yaml /tmp/desarrollo.yml --title "2. Desarrollo" --out /tmp/desarrollo.html
+            python confluence_publish.py --title "2. Desarrollo" --parent-title "$ROOT_TITLE" --body-file /tmp/desarrollo.html
+            python confluence_fingerprint.py --title "2. Desarrollo" --set "$LOCAL_FP"
+          fi
+
+      - name: Sync "3. Infraestructura declarada" (manifest, solo si cambió)
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+        run: |
+          set -e
+          LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/manifest/infraestructura-declarada.yml")
+          REMOTE_FP=$(python confluence_fingerprint.py --title "3. Infraestructura declarada" --get)
+          if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
+            echo "Sin cambios en infraestructura-declarada.yml, se omite publicación."
+          else
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/infraestructura-declarada.yml" --title "3. Infraestructura declarada" --out /tmp/infra-declarada.html
+            python confluence_publish.py --title "3. Infraestructura declarada" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-declarada.html
+            python confluence_fingerprint.py --title "3. Infraestructura declarada" --set "$LOCAL_FP"
+          fi
+
+      - name: Sync "4. Infraestructura relevada" (escaneo de Terraform, solo si cambió)
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+        run: |
+          set -e
+          LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "*.tf" "**/*.tf")
+          REMOTE_FP=$(python confluence_fingerprint.py --title "4. Infraestructura relevada" --get)
+          if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
+            echo "Sin cambios en los archivos .tf, se omite publicación."
+          else
+            python scan_terraform.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/infra-relevada.yml \
+              --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
+            python yaml_to_confluence.py --yaml /tmp/infra-relevada.yml --title "4. Infraestructura relevada" --out /tmp/infra-relevada.html
+            python confluence_publish.py --title "4. Infraestructura relevada" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-relevada.html
+            python confluence_fingerprint.py --title "4. Infraestructura relevada" --set "$LOCAL_FP"
+          fi
+
+      - name: Sync "5. Modelado de amenaza" (solo si cambió)
+        working-directory: .docops-templates/docops/scripts
+        env:
+          GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
+        run: |
+          set -e
+          LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/generated/amenazas.yml")
+          REMOTE_FP=$(python confluence_fingerprint.py --title "5. Modelado de amenaza (borrador)" --get)
+          if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
+            echo "Sin cambios en amenazas.yml, se omite publicación."
+          else
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/generated/amenazas.yml" --title "5. Modelado de amenaza (borrador)" --out /tmp/amenazas.html
+            python confluence_publish.py --title "5. Modelado de amenaza (borrador)" --parent-title "$ROOT_TITLE" --body-file /tmp/amenazas.html
+            python confluence_fingerprint.py --title "5. Modelado de amenaza (borrador)" --set "$LOCAL_FP"
+          fi
