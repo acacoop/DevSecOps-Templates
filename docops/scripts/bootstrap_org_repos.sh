@@ -55,6 +55,8 @@ mapfile -t REPOS < <(
 echo "Repos candidatos encontrados: ${#REPOS[@]}"
 echo
 
+FAILED_REPOS=()
+
 for REPO in "${REPOS[@]}"; do
   if [ "$REPO" = "$TEMPLATES_REPO" ]; then
     echo "SKIP  $REPO (es el propio repo de templates)"
@@ -87,7 +89,7 @@ for REPO in "${REPOS[@]}"; do
   echo "BOOTSTRAP  $REPO"
   REPO_DIR="$WORKDIR/$(basename "$REPO")"
   gh repo clone "$REPO" "$REPO_DIR" -- --quiet
-  (
+  if ! (
     cd "$REPO_DIR"
     git checkout -b "$BRANCH_NAME"
 
@@ -98,7 +100,11 @@ for REPO in "${REPOS[@]}"; do
     cp "$TEMPLATE_DIR"/generated/*.yml docs/generated/ 2>/dev/null || true
     cp "$TEMPLATE_DIR/README.md" docs/README.md
 
-    git add .github/workflows/docops-sync.yml .github/workflows/docops-preview.yml docs/
+    # -f: algunos repos tienen "docs" en su .gitignore (ej. para no versionar
+    # docs generadas por otra herramienta). Acá queremos versionar docs/
+    # SIEMPRE, es scaffolding intencional del pipeline DocOps.
+    git add .github/workflows/docops-sync.yml .github/workflows/docops-preview.yml
+    git add -f docs/
     if git diff --cached --quiet; then
       echo "  (sin cambios reales para $REPO, se omite)"
       exit 0
@@ -127,8 +133,18 @@ Antes de mergear, el equipo dueño de este repo debe:
 Ver [$TEMPLATES_REPO/docops/README.md](https://github.com/$TEMPLATES_REPO/blob/main/docops/README.md) para más detalle." \
       --head "$BRANCH_NAME" \
       --base "$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
-  )
+  ); then
+    echo "  !! FALLÓ el bootstrap de $REPO (ver log arriba), continuando con el resto..."
+    FAILED_REPOS+=("$REPO")
+  fi
 done
 
 echo
 echo "== Listo =="
+if [ "${#FAILED_REPOS[@]}" -gt 0 ]; then
+  echo
+  echo "Repos que fallaron (revisar manualmente):"
+  for FAILED in "${FAILED_REPOS[@]}"; do
+    echo "  - $FAILED"
+  done
+fi
