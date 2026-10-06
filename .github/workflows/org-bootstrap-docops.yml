@@ -1,0 +1,56 @@
+name: DocOps - Bootstrap org repos (global rollout)
+
+# -----------------------------------------------------------------------------
+# Este es el workflow que hace que DocOps sea "automático y global para cada
+# repo nuevo": en vez de depender de que alguien recuerde copiar archivos al
+# crear un repo, este workflow recorre TODOS los repos de la organización y
+# abre un Pull Request en cada uno que todavía no tenga el pipeline instalado.
+#
+# Por diseño, NUNCA hace push directo a main de un repo ajeno: siempre abre
+# un PR, para que el equipo dueño decida cuándo adoptarlo.
+#
+# Disparadores:
+#   - Manual (workflow_dispatch), con un flag `dry_run` (default: true) para
+#     poder ver primero QUÉ repos se tocarían antes de abrir PRs de verdad.
+#   - El "schedule" semanal está incluido pero puede activarse recién
+#     cuando se decida pasar esto de "prueba" a "régimen" (ver docops/README.md,
+#     sección "Aplicación global", opción 2).
+#
+# Requiere un secret de organización ORG_BOOTSTRAP_TOKEN: un Personal Access
+# Token (fine-grained) con acceso a TODOS los repos de la organización y
+# permisos: Contents (write), Pull requests (write), Workflows (write),
+# Metadata (read). El GITHUB_TOKEN automático NO alcanza: solo tiene permisos
+# sobre el repo donde corre el workflow, no sobre el resto de la organización.
+# -----------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = solo lista qué repos se tocarían, sin escribir nada"
+        type: boolean
+        required: false
+        default: true
+  # schedule:
+  #   - cron: "0 13 * * 1"  # lunes 13:00 UTC — descomentar cuando se confirme pasar a régimen
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout DevSecOps-Templates
+        uses: actions/checkout@v4
+
+      - name: Run bootstrap script
+        env:
+          GH_TOKEN: ${{ secrets.ORG_BOOTSTRAP_TOKEN }}
+        run: |
+          chmod +x docops/scripts/bootstrap_org_repos.sh
+          ARGS=(acacoop acacoop/DevSecOps-Templates)
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          docops/scripts/bootstrap_org_repos.sh "${ARGS[@]}"

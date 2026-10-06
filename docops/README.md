@@ -54,33 +54,53 @@ invoca (`github.workspace`). Así, actualizar un script acá (ej. agregar un
 framework nuevo a `scan_code.py`) se propaga automáticamente a todos los
 repos la próxima vez que corran, sin tocar nada en cada repo individual.
 
-## Aplicación global (para cuando salgamos del sandbox)
+## Aplicación global: rollout automático a toda la organización
 
-Hay tres formas de "activar esto para cada repo nuevo que se cree",
-de menor a mayor automatización:
+La forma elegida para cumplir "que esto sea automático y global para cada
+repo que se cree" es un **workflow de reconciliación** (no depende de que
+alguien elija un template al crear el repo): `org-bootstrap-docops.yml`.
 
-1. **Repository template de la organización.** Se marca este repo (o uno
-   dedicado) como "template" en GitHub, y cuando alguien crea un repo nuevo
-   eligiendo ese template, ya viene con `.github/workflows/docops-sync.yml`
-   y `docs/` scaffolded. Requiere que la persona elija el template al
-   crear el repo (no es 100% automático, pero es el más simple de activar).
+### Cómo funciona
 
-2. **GitHub App que escucha `repository.created`.** Una GitHub App (o un
-   workflow en un repo "controlador" disparado por un webhook de
-   organización) que, cada vez que se crea un repo nuevo en `acacoop`,
-   hace un commit inicial agregando `.github/workflows/docops-sync.yml` +
-   `docs/` automáticamente, y llama a la API de GitHub para cargar los 4
-   secrets de Confluence (si se gestionan de forma centralizada, ver punto
-   siguiente). Esto sí es 100% automático, pero requiere desplegar y
-   mantener la App.
+1. Corre `docops/scripts/bootstrap_org_repos.sh`, que lista TODOS los repos
+   de la organización (excluye forks, templates, y el propio
+   `DevSecOps-Templates`).
+2. Para cada repo que **todavía no tiene**
+   `.github/workflows/docops-sync.yml`, clona el repo, agrega ese workflow
+   + el scaffolding de `docs/manifest` y `docs/generated`, y **abre un Pull
+   Request** (nunca hace push directo a `main` de un repo ajeno — el equipo
+   dueño decide cuándo mergearlo, evitando romper un `docs/` que ya exista
+   con otro propósito).
+3. Los repos que ya tienen el workflow se saltean (idempotente: correrlo de
+   nuevo no duplica PRs ni pisa nada).
 
-3. **Secrets a nivel organización + required workflow (GHE/Enterprise).**
-   En vez de cargar los 4 secrets en cada repo, se cargan una sola vez como
-   "Organization secret" (con política de acceso a los repos que correspondan),
-   y si la cuenta de GitHub lo soporta (GitHub Enterprise Cloud), se puede
-   forzar que TODOS los repos ejecuten un "required workflow" sin que cada
-   uno necesite tener el archivo `.github/workflows/docops-sync.yml` propio.
+### Cómo activarlo
 
-Para el sandbox actual alcanza con la opción manual (copiar 2 archivos +
-cargar 4 secrets por repo), que es exactamente lo que se hizo en
-`acacoop/docops-sandbox`. Las opciones 1-3 son el Paso 10 del roadmap.
+1. Generar un **Personal Access Token (fine-grained)** con acceso a todos
+   los repos de la organización y permisos: `Contents: write`,
+   `Pull requests: write`, `Workflows: write`, `Metadata: read`.
+   (El `GITHUB_TOKEN` automático de Actions NO sirve para esto: solo tiene
+   permisos sobre el repo donde corre el workflow, no sobre el resto de la
+   organización — por eso hace falta un PAT explícito).
+2. Cargarlo como **organization secret** `ORG_BOOTSTRAP_TOKEN` (accesible
+   al menos por este repo).
+3. Correr el workflow manualmente (`workflow_dispatch`) con
+   `dry_run: true` primero, para ver en los logs QUÉ repos se tocarían,
+   sin escribir nada todavía.
+4. Si la lista es la esperada, volver a correrlo con `dry_run: false` para
+   abrir los PRs de verdad.
+5. (Opcional, más adelante) Descomentar el `schedule:` del workflow para
+   que esto corra solo, por ejemplo, una vez por semana, y así los repos
+   creados después también terminen recibiendo su PR de bootstrap sin
+   intervención manual.
+
+### Recomendación adicional: secrets de Confluence a nivel organización
+
+Para que un repo nuevo no tenga que cargar los 4 secrets de Confluence a
+mano, conviene cargarlos UNA sola vez como **organization secrets**
+(Settings → Secrets and variables → Actions → "New organization secret"),
+con política de acceso "All repositories" o una lista explícita. Así, el
+único paso manual que le queda a un equipo nuevo es completar
+`docs/manifest/*.yml` (o esperar a la integración con Jira) — todo lo demás
+ya está resuelto por el PR de bootstrap + los secrets heredados de la
+organización.
