@@ -18,6 +18,16 @@ name: DocOps - Sync docs to Confluence
 #      (o configurarlos a nivel organización/entorno para no repetir esto
 #      en cada repo — ver docops/README.md, sección "Aplicación global").
 #   4. Hacer push a main. El pipeline corre solo a partir de ahí.
+#
+# Enriquecimiento con IA (opcional, activado por default):
+#   El bloque "2. Desarrollo" y "4. Infraestructura relevada" se completan
+#   además con GitHub Models para los campos narrativos que el escaneo no
+#   puede inferir con certeza (funciones esenciales, roles, integraciones,
+#   etc.), SIEMPRE citando un archivo real del repo como evidencia. Nunca
+#   inventa datos ni pisa lo que ya determinó el escaneo. Para que
+#   funcione hace falta el permiso "models: read" (ya incluido abajo). Si
+#   un repo no lo tiene habilitado a nivel organización, el paso se omite
+#   solo y el resto del pipeline sigue normal.
 # -----------------------------------------------------------------------------
 
 on:
@@ -26,10 +36,21 @@ on:
 
 permissions:
   contents: read
+  # "models: read" es necesario para que el bloque "2. Desarrollo" y
+  # "4. Infraestructura relevada" se completen con IA (GitHub Models)
+  # cuando el escaneo determinístico deja campos narrativos en null (ver
+  # ai_enrich.py). Los permisos de un workflow reusable nunca pueden ser
+  # mayores a los que otorga quien lo invoca, así que esta línea tiene que
+  # estar en CADA repo que quiera esa mejora. Si se omite, el pipeline
+  # sigue funcionando igual: el enriquecimiento se omite en silencio y
+  # esos campos quedan en "No determinado desde el repositorio".
+  models: read
 
 jobs:
   docops-sync:
     uses: acacoop/DevSecOps-Templates/.github/workflows/docops-sync.yml@main
+    with:
+      ai_enrichment: true # poner en false para desactivar el enriquecimiento con IA en este repo
     secrets:
       CONFLUENCE_BASE_URL: ${{ secrets.CONFLUENCE_BASE_URL }}
       CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}

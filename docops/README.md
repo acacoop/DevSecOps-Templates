@@ -25,6 +25,7 @@ docops/
 │   ├── compute_fingerprint.py    # CLI fina sobre fingerprint_utils
 │   ├── scan_code.py              # escaneo real de código de aplicación
 │   ├── scan_terraform.py         # escaneo real de infraestructura (*.tf)
+│   ├── ai_enrich.py              # enriquecimiento opcional con IA (ver abajo)
 │   └── yaml_to_confluence.py     # conversor genérico YAML -> HTML storage
 └── docs-template/                 # scaffolding para copiar a un repo NUEVO
     ├── manifest/                  # (solo Jira escribe acá)
@@ -69,6 +70,44 @@ para traer los scripts, y corre todo contra el checkout del repo que lo
 invoca (`github.workspace`). Así, actualizar un script acá (ej. agregar un
 framework nuevo a `scan_code.py`) se propaga automáticamente a todos los
 repos la próxima vez que corran, sin tocar nada en cada repo individual.
+
+## Enriquecimiento con IA (opcional, activado por default)
+
+El escaneo determinístico (`scan_code.py` / `scan_terraform.py`) solo
+completa un campo cuando encuentra evidencia inequívoca en un archivo del
+repo (versión en un manifiesto, motor de base de datos en un `docker-compose`,
+recurso en un `.tf`, etc.). Hay secciones enteras que son, por naturaleza,
+narrativas — "Funciones esenciales", "Roles y responsabilidades",
+"Integración y dependencias", "Procesos tecnológicos clave" — que un regex
+no puede completar con confianza y que históricamente quedaban siempre en
+*"No determinado desde el repositorio"*.
+
+`ai_enrich.py` agrega una capa de IA (GitHub Models) que corre DESPUÉS del
+escaneo determinístico, tanto para "2. Desarrollo" como para
+"4. Infraestructura relevada", con reglas estrictas que preservan la
+filosofía de "nunca inventar":
+
+- Solo mira los campos que **siguen en `null`** tras el escaneo. Nunca
+  pisa un valor que ya vino del regex/manifiesto.
+- Al modelo se le manda como única evidencia el **contenido real** de
+  archivos del repo (README, manifiestos, `*.tf`, etc.), con instrucciones
+  explícitas de responder `null` si no hay evidencia.
+- Todo campo completado que necesita una referencia a evidencia (`donde`,
+  `archivo`, `evidencia`, `origen`, etc.) se **valida contra la lista real
+  de archivos del repo**: si el modelo cita un path que no existe, se
+  descarta ese campo (o ese registro completo), no se publica.
+- Es **best-effort y no bloqueante**: si falla por cualquier motivo (sin
+  permiso `models: read`, GitHub Models no habilitado en la organización,
+  rate limit, timeout), el paso se omite y el resto del pipeline sigue
+  igual — los campos sin evidencia simplemente quedan en null, como
+  siempre funcionó.
+- Se puede desactivar por repo con `ai_enrichment: false` en el `with:`
+  del `docops-sync.yml` del repo consumidor.
+
+Requiere el permiso `models: read` declarado en el workflow consumidor
+(ya incluido en `docops/docs-template/consumer-workflow-example.yml`) —
+los permisos de un workflow reusable nunca pueden ser mayores a los que
+otorga quien lo invoca.
 
 ## Aplicación global: rollout automático a toda la organización
 

@@ -44,6 +44,17 @@ on:
         required: false
         type: string
         default: "main"
+      ai_enrichment:
+        description: >-
+          Completa con IA (GitHub Models) los campos narrativos que el escaneo
+          determinístico deja en null, en "2. Desarrollo" y "4. Infraestructura
+          relevada" (ej. funciones esenciales, roles, integraciones). Nunca
+          pisa un valor ya determinado por el escaneo, y si falla (sin
+          permiso, sin modelo disponible, etc.) no interrumpe la publicación:
+          el campo simplemente queda en null. Default: true.
+        required: false
+        type: boolean
+        default: true
     secrets:
       CONFLUENCE_BASE_URL:
         required: true
@@ -56,6 +67,12 @@ on:
 
 permissions:
   contents: read
+  # "models: read" habilita que el GITHUB_TOKEN del repo que invoca pueda
+  # consultar GitHub Models para el enriquecimiento con IA (ver
+  # ai_enrich.py). Si el repo/organización no tiene GitHub Models
+  # habilitado, la llamada simplemente falla de forma controlada y el
+  # enriquecimiento se omite: no bloquea la publicación.
+  models: read
 
 jobs:
   publish-to-confluence:
@@ -126,6 +143,11 @@ jobs:
           else
             python scan_code.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/desarrollo.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
+            if [ "${{ inputs.ai_enrichment }}" = "true" ]; then
+              GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" python ai_enrich.py \
+                --root "$GITHUB_WORKSPACE_CALLER" --yaml /tmp/desarrollo.yml \
+                || echo "Enriquecimiento con IA omitido (no bloqueante)."
+            fi
             python yaml_to_confluence.py --yaml /tmp/desarrollo.yml --title "$PAGE_TITLE" --out /tmp/desarrollo.html
             python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/desarrollo.html
             python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
@@ -162,6 +184,11 @@ jobs:
           else
             python scan_terraform.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/infra-relevada.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
+            if [ "${{ inputs.ai_enrichment }}" = "true" ]; then
+              GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" python ai_enrich.py \
+                --root "$GITHUB_WORKSPACE_CALLER" --yaml /tmp/infra-relevada.yml \
+                || echo "Enriquecimiento con IA omitido (no bloqueante)."
+            fi
             python yaml_to_confluence.py --yaml /tmp/infra-relevada.yml --title "$PAGE_TITLE" --out /tmp/infra-relevada.html
             python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-relevada.html
             python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
