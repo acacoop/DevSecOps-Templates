@@ -36,6 +36,16 @@ DRY_RUN="${3:-}"
 #   EXCLUDE_REPOS="acacoop/.github,acacoop/legacy-poc" ./bootstrap_org_repos.sh ...
 IFS=',' read -ra EXCLUDE_LIST <<< "${EXCLUDE_REPOS:-}"
 
+# "gh repo clone" autentica el clone en sí mismo (inyecta el token solo para
+# esa invocación), pero NO deja configurado un credential helper persistente
+# en el repo clonado. Sin esto, los "git push" posteriores (comandos de git
+# puro, no de gh) fallan con "fatal: could not read Username for
+# 'https://github.com'" porque no encuentran ninguna credencial. Con
+# "gh auth setup-git" se registra "gh" como credential.helper de git a nivel
+# global, el cual resuelve el token vía GH_TOKEN (la misma variable que ya
+# usa el resto del script), por lo que todo push/fetch posterior funciona.
+gh auth setup-git
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_DIR="$SCRIPT_DIR/../docs-template"
 WORKDIR="$(mktemp -d)"
@@ -78,6 +88,15 @@ for REPO in "${REPOS[@]}"; do
   # ¿Ya tiene el workflow instalado?
   if gh api "repos/$REPO/contents/.github/workflows/docops-sync.yml" >/dev/null 2>&1; then
     echo "SKIP  $REPO (ya tiene docops-sync.yml)"
+    continue
+  fi
+
+  # ¿Ya hay un PR de bootstrap abierto (de una corrida anterior) esperando
+  # review? No tiene sentido re-clonar/re-pushear: el equipo dueño todavía
+  # no lo mergeó, así que simplemente lo recordamos y seguimos.
+  EXISTING_PR="$(gh pr list --repo "$REPO" --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)"
+  if [ -n "$EXISTING_PR" ]; then
+    echo "SKIP  $REPO (ya tiene un PR de bootstrap abierto: $EXISTING_PR)"
     continue
   fi
 
