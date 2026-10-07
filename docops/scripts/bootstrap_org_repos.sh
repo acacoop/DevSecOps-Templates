@@ -88,6 +88,10 @@ for REPO in "${REPOS[@]}"; do
 
   echo "BOOTSTRAP  $REPO"
   REPO_DIR="$WORKDIR/$(basename "$REPO")"
+  # La rama por defecto real del repo (puede no ser "main": master, Dev, etc.).
+  # Los templates traen "branches: [main]" hardcodeado; si no se ajusta acá,
+  # el trigger nunca dispara en repos cuyo default branch es distinto.
+  DEFAULT_BRANCH="$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
   if ! (
     gh repo clone "$REPO" "$REPO_DIR" -- --quiet
     cd "$REPO_DIR"
@@ -96,6 +100,10 @@ for REPO in "${REPOS[@]}"; do
     mkdir -p .github/workflows docs/manifest docs/generated
     cp "$TEMPLATE_DIR/consumer-workflow-example.yml" .github/workflows/docops-sync.yml
     cp "$TEMPLATE_DIR/consumer-preview-workflow-example.yml" .github/workflows/docops-preview.yml
+    if [ "$DEFAULT_BRANCH" != "main" ]; then
+      sed -i "s/branches: \[main\]/branches: [$DEFAULT_BRANCH]/" \
+        .github/workflows/docops-sync.yml .github/workflows/docops-preview.yml
+    fi
     cp "$TEMPLATE_DIR"/manifest/*.yml docs/manifest/ 2>/dev/null || true
     cp "$TEMPLATE_DIR"/generated/*.yml docs/generated/ 2>/dev/null || true
     cp "$TEMPLATE_DIR/README.md" docs/README.md
@@ -132,7 +140,7 @@ Antes de mergear, el equipo dueño de este repo debe:
 
 Ver [$TEMPLATES_REPO/docops/README.md](https://github.com/$TEMPLATES_REPO/blob/main/docops/README.md) para más detalle." \
       --head "$BRANCH_NAME" \
-      --base "$(gh repo view "$REPO" --json defaultBranchRef --jq .defaultBranchRef.name)"
+      --base "$DEFAULT_BRANCH"
   ); then
     echo "  !! FALLÓ el bootstrap de $REPO (ver log arriba), continuando con el resto..."
     FAILED_REPOS+=("$REPO")

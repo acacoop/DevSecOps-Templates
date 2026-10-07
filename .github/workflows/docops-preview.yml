@@ -94,10 +94,11 @@ jobs:
           check_block () {
             local title="$1"
             shift
+            local page_title="$ROOT_TITLE - $title"
             local local_fp
             local_fp=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" "$@")
             local remote_fp
-            remote_fp=$(python confluence_fingerprint.py --title "$title" --get)
+            remote_fp=$(python confluence_fingerprint.py --title "$page_title" --get)
             if [ "$local_fp" = "$remote_fp" ] && [ -n "$remote_fp" ]; then
               echo "| $title | ✅ Sin cambios |" >> "$COMMENT_FILE"
             else

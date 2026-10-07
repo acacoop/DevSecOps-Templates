@@ -99,14 +99,15 @@ jobs:
           GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
         run: |
           set -e
+          PAGE_TITLE="$ROOT_TITLE - 1. Negocio"
           LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/manifest/negocio.yml")
-          REMOTE_FP=$(python confluence_fingerprint.py --title "1. Negocio" --get)
+          REMOTE_FP=$(python confluence_fingerprint.py --title "$PAGE_TITLE" --get)
           if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
             echo "Sin cambios en negocio.yml, se omite publicación."
           else
-            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/negocio.yml" --title "1. Negocio" --out /tmp/negocio.html
-            python confluence_publish.py --title "1. Negocio" --parent-title "$ROOT_TITLE" --body-file /tmp/negocio.html
-            python confluence_fingerprint.py --title "1. Negocio" --set "$LOCAL_FP"
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/negocio.yml" --title "$PAGE_TITLE" --out /tmp/negocio.html
+            python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/negocio.html
+            python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
           fi
 
       - name: Sync "2. Desarrollo" (escaneo de código, solo si cambió)
@@ -115,18 +116,19 @@ jobs:
           GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
         run: |
           set -e
+          PAGE_TITLE="$ROOT_TITLE - 2. Desarrollo"
           LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" \
             --include "*" "**/*" \
             --exclude "docs/**" "infra/**" ".github/**" "**/__pycache__/**" "**/node_modules/**" "**/.terraform/**")
-          REMOTE_FP=$(python confluence_fingerprint.py --title "2. Desarrollo" --get)
+          REMOTE_FP=$(python confluence_fingerprint.py --title "$PAGE_TITLE" --get)
           if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
             echo "Sin cambios en el código de la aplicación, se omite publicación."
           else
             python scan_code.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/desarrollo.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
-            python yaml_to_confluence.py --yaml /tmp/desarrollo.yml --title "2. Desarrollo" --out /tmp/desarrollo.html
-            python confluence_publish.py --title "2. Desarrollo" --parent-title "$ROOT_TITLE" --body-file /tmp/desarrollo.html
-            python confluence_fingerprint.py --title "2. Desarrollo" --set "$LOCAL_FP"
+            python yaml_to_confluence.py --yaml /tmp/desarrollo.yml --title "$PAGE_TITLE" --out /tmp/desarrollo.html
+            python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/desarrollo.html
+            python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
           fi
 
       - name: Sync "3. Infraestructura declarada" (manifest, solo si cambió)
@@ -135,14 +137,15 @@ jobs:
           GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
         run: |
           set -e
+          PAGE_TITLE="$ROOT_TITLE - 3. Infraestructura declarada"
           LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/manifest/infraestructura-declarada.yml")
-          REMOTE_FP=$(python confluence_fingerprint.py --title "3. Infraestructura declarada" --get)
+          REMOTE_FP=$(python confluence_fingerprint.py --title "$PAGE_TITLE" --get)
           if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
             echo "Sin cambios en infraestructura-declarada.yml, se omite publicación."
           else
-            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/infraestructura-declarada.yml" --title "3. Infraestructura declarada" --out /tmp/infra-declarada.html
-            python confluence_publish.py --title "3. Infraestructura declarada" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-declarada.html
-            python confluence_fingerprint.py --title "3. Infraestructura declarada" --set "$LOCAL_FP"
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/manifest/infraestructura-declarada.yml" --title "$PAGE_TITLE" --out /tmp/infra-declarada.html
+            python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-declarada.html
+            python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
           fi
 
       - name: Sync "4. Infraestructura relevada" (escaneo de Terraform, solo si cambió)
@@ -151,16 +154,17 @@ jobs:
           GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
         run: |
           set -e
+          PAGE_TITLE="$ROOT_TITLE - 4. Infraestructura relevada"
           LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "*.tf" "**/*.tf")
-          REMOTE_FP=$(python confluence_fingerprint.py --title "4. Infraestructura relevada" --get)
+          REMOTE_FP=$(python confluence_fingerprint.py --title "$PAGE_TITLE" --get)
           if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
             echo "Sin cambios en los archivos .tf, se omite publicación."
           else
             python scan_terraform.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/infra-relevada.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
-            python yaml_to_confluence.py --yaml /tmp/infra-relevada.yml --title "4. Infraestructura relevada" --out /tmp/infra-relevada.html
-            python confluence_publish.py --title "4. Infraestructura relevada" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-relevada.html
-            python confluence_fingerprint.py --title "4. Infraestructura relevada" --set "$LOCAL_FP"
+            python yaml_to_confluence.py --yaml /tmp/infra-relevada.yml --title "$PAGE_TITLE" --out /tmp/infra-relevada.html
+            python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/infra-relevada.html
+            python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
           fi
 
       - name: Sync "5. Modelado de amenaza" (solo si cambió)
@@ -169,12 +173,13 @@ jobs:
           GITHUB_WORKSPACE_CALLER: ${{ github.workspace }}
         run: |
           set -e
+          PAGE_TITLE="$ROOT_TITLE - 5. Modelado de amenaza (borrador)"
           LOCAL_FP=$(python compute_fingerprint.py --root "$GITHUB_WORKSPACE_CALLER" --include "docs/generated/amenazas.yml")
-          REMOTE_FP=$(python confluence_fingerprint.py --title "5. Modelado de amenaza (borrador)" --get)
+          REMOTE_FP=$(python confluence_fingerprint.py --title "$PAGE_TITLE" --get)
           if [ "$LOCAL_FP" = "$REMOTE_FP" ] && [ -n "$REMOTE_FP" ]; then
             echo "Sin cambios en amenazas.yml, se omite publicación."
           else
-            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/generated/amenazas.yml" --title "5. Modelado de amenaza (borrador)" --out /tmp/amenazas.html
-            python confluence_publish.py --title "5. Modelado de amenaza (borrador)" --parent-title "$ROOT_TITLE" --body-file /tmp/amenazas.html
-            python confluence_fingerprint.py --title "5. Modelado de amenaza (borrador)" --set "$LOCAL_FP"
+            python yaml_to_confluence.py --yaml "$GITHUB_WORKSPACE_CALLER/docs/generated/amenazas.yml" --title "$PAGE_TITLE" --out /tmp/amenazas.html
+            python confluence_publish.py --title "$PAGE_TITLE" --parent-title "$ROOT_TITLE" --body-file /tmp/amenazas.html
+            python confluence_fingerprint.py --title "$PAGE_TITLE" --set "$LOCAL_FP"
           fi
