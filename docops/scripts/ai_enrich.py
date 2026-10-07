@@ -2,9 +2,15 @@
 ai_enrich.py
 =============
 Enriquecimiento OPCIONAL y best-effort de los YAML generados por
-scan_code.py / scan_terraform.py, usando un modelo de lenguaje (GitHub
-Models) para completar SOLO los campos que el escaneo determinístico dejó
-en `null`.
+scan_code.py / scan_terraform.py, usando GitHub Copilot CLI (`copilot -p`)
+para completar SOLO los campos que el escaneo determinístico dejó en
+`null`.
+
+NOTA HISTORICA: la primera version de este script usaba GitHub Models
+(API HTTP separada de Copilot). GitHub Models fue retirado por completo
+el 30 de julio de 2026 y ya no responde JSON valido para ningun cliente.
+Por eso este script invoca Copilot CLI como subproceso en su lugar; toda
+la logica de validacion anti-alucinacion de abajo no cambio.
 
 Principios de diseño (no negociables):
   - Nunca reemplaza un valor ya determinado por el escaneo heurístico.
@@ -17,8 +23,16 @@ Principios de diseño (no negociables):
     coincide con un archivo real, se descarta ese campo/registro entero
     (queda `null`, como si el modelo no hubiera respondido nada).
   - Nunca puede romper el pipeline: cualquier error (sin token, sin
-    permiso de "models: read", rate limit, respuesta no-JSON, timeout de
-    red) se loguea como aviso y el YAML queda exactamente como entró.
+    Copilot CLI instalado, rate limit, respuesta no-JSON, timeout) se
+    loguea como aviso y el YAML queda exactamente como entró.
+
+Autenticación: Copilot CLI necesita un token en la variable de entorno
+`COPILOT_GITHUB_TOKEN` (orden de precedencia de la propia CLI). El
+`GITHUB_TOKEN` automático de Actions NO sirve (formato no soportado por
+Copilot CLI): hace falta un Personal Access Token de grano fino, de una
+cuenta personal con asiento de Copilot, con el permiso "Copilot
+Requests". Ver docops/README.md para el paso a paso de cómo generarlo y
+dónde guardarlo como secret.
 
 Uso:
     python scripts/ai_enrich.py --root . --yaml /tmp/desarrollo.yml
@@ -30,13 +44,20 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 
-import requests
 import yaml
 
-MODELS_ENDPOINT = "https://models.github.ai/inference/chat/completions"
-DEFAULT_MODEL = os.environ.get("AI_ENRICHMENT_MODEL", "openai/gpt-4o-mini")
+# Modelo de Copilot CLI a usar. Se puede fijar explícitamente vía la env
+# var AI_ENRICHMENT_MODEL (ej. "claude-haiku-4.5") si se prefiere otro
+# balance costo/calidad; por default usamos un modelo económico porque
+# cada invocación consume una "premium request" de la cuota de Copilot.
+DEFAULT_MODEL = os.environ.get("AI_ENRICHMENT_MODEL", "gpt-5-mini")
+
+# Timeout generoso: instanciar Copilot CLI (Node.js) + la consulta al
+# modelo puede tardar más que un POST HTTP directo.
+CLI_TIMEOUT_SECONDS = int(os.environ.get("AI_ENRICHMENT_TIMEOUT", "120"))
 
 # Presupuesto de contexto: cuánto texto de evidencia se le manda al modelo
 # como máximo (y cuánto se lee de cada archivo individual), para no volar
@@ -223,29 +244,44 @@ def call_model(skeleton: dict, evidence: str, token: str) -> dict | None:
         f"{evidence}\n"
     )
 
-    body = {
-        "model": DEFAULT_MODEL,
-        "temperature": 0,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-    }
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+    env = os.environ.copy()
+    # Copilot CLI lee el token de auth de COPILOT_GITHUB_TOKEN (prioridad
+    # más alta en su orden de precedencia). Lo seteamos acá explícitamente
+    # en vez de depender de que ya esté en el entorno del job.
+    env["COPILOT_GITHUB_TOKEN"] = token
+
+    cmd = [
+        "copilot",
+        "-p", full_prompt,
+        # -s: solo la respuesta final del agente, sin stats/decoración
+        # (necesario para poder parsear stdout como JSON limpio).
+        "-s",
+        # No tiene sentido esperar input humano en un runner sin TTY: si
+        # el modelo quisiera pedir una aclaración, que directamente siga
+        # sin ella en vez de colgar el job.
+        "--no-ask-user",
+        "--no-color",
+        "--model", DEFAULT_MODEL,
+    ]
     try:
-        resp = requests.post(
-            MODELS_ENDPOINT,
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-            timeout=60,
+        result = subprocess.run(
+            cmd,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=CLI_TIMEOUT_SECONDS,
         )
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"copilot CLI salió con código {result.returncode}: "
+                f"{result.stderr.strip()[:500]}"
+            )
+        content = result.stdout
     except Exception as exc:  # noqa: BLE001 - best-effort: nunca debe romper el pipeline
         print(
-            f"[ai_enrich] aviso: no se pudo consultar el modelo ({exc}); "
+            f"[ai_enrich] aviso: no se pudo consultar Copilot CLI ({exc}); "
             "se omite el enriquecimiento.",
             file=sys.stderr,
         )
@@ -359,11 +395,14 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("AI_ENRICHMENT_TOKEN")
+    token = os.environ.get("COPILOT_GITHUB_TOKEN") or os.environ.get("AI_ENRICHMENT_TOKEN")
     if not token:
         print(
-            "[ai_enrich] sin token disponible (GITHUB_TOKEN/AI_ENRICHMENT_TOKEN); "
-            "se omite el enriquecimiento.",
+            "[ai_enrich] sin token disponible (COPILOT_GITHUB_TOKEN/"
+            "AI_ENRICHMENT_TOKEN); se omite el enriquecimiento. El "
+            "GITHUB_TOKEN automático de Actions NO sirve: hace falta un "
+            "Personal Access Token de grano fino con permiso 'Copilot "
+            "Requests' (ver docops/README.md).",
             file=sys.stderr,
         )
         return

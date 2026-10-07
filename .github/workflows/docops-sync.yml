@@ -46,12 +46,14 @@ on:
         default: "main"
       ai_enrichment:
         description: >-
-          Completa con IA (GitHub Models) los campos narrativos que el escaneo
-          determinístico deja en null, en "2. Desarrollo" y "4. Infraestructura
-          relevada" (ej. funciones esenciales, roles, integraciones). Nunca
-          pisa un valor ya determinado por el escaneo, y si falla (sin
-          permiso, sin modelo disponible, etc.) no interrumpe la publicación:
-          el campo simplemente queda en null. Default: true.
+          Completa con GitHub Copilot CLI los campos narrativos que el
+          escaneo determinístico deja en null, en "2. Desarrollo" y "4.
+          Infraestructura relevada" (ej. funciones esenciales, roles,
+          integraciones). Nunca pisa un valor ya determinado por el
+          escaneo, y si falla (sin token, sin CLI instalada, etc.) no
+          interrumpe la publicación: el campo simplemente queda en null.
+          Requiere el secret COPILOT_GITHUB_TOKEN (ver docops/README.md).
+          Default: true.
         required: false
         type: boolean
         default: true
@@ -64,15 +66,17 @@ on:
         required: true
       CONFLUENCE_SPACE_KEY:
         required: true
+      COPILOT_GITHUB_TOKEN:
+        description: >-
+          Personal Access Token de grano fino (cuenta personal con asiento
+          de Copilot, permiso "Copilot Requests") usado por ai_enrich.py
+          para invocar Copilot CLI. Solo hace falta si ai_enrichment=true.
+          Si no se provee, el enriquecimiento se omite sin romper el
+          pipeline.
+        required: false
 
 permissions:
   contents: read
-  # "models: read" habilita que el GITHUB_TOKEN del repo que invoca pueda
-  # consultar GitHub Models para el enriquecimiento con IA (ver
-  # ai_enrich.py). Si el repo/organización no tiene GitHub Models
-  # habilitado, la llamada simplemente falla de forma controlada y el
-  # enriquecimiento se omite: no bloquea la publicación.
-  models: read
 
 jobs:
   publish-to-confluence:
@@ -103,6 +107,16 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r .docops-templates/docops/scripts/requirements.txt
+
+      - name: Setup Node.js (para GitHub Copilot CLI)
+        if: inputs.ai_enrichment
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install GitHub Copilot CLI
+        if: inputs.ai_enrichment
+        run: npm install -g @github/copilot
 
       - name: Ensure root project page exists
         working-directory: .docops-templates/docops/scripts
@@ -144,7 +158,7 @@ jobs:
             python scan_code.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/desarrollo.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
             if [ "${{ inputs.ai_enrichment }}" = "true" ]; then
-              GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" python ai_enrich.py \
+              COPILOT_GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}" python ai_enrich.py \
                 --root "$GITHUB_WORKSPACE_CALLER" --yaml /tmp/desarrollo.yml \
                 || echo "Enriquecimiento con IA omitido (no bloqueante)."
             fi
@@ -185,7 +199,7 @@ jobs:
             python scan_terraform.py --root "$GITHUB_WORKSPACE_CALLER" --out /tmp/infra-relevada.yml \
               --fingerprint "$LOCAL_FP" --commit "${{ github.sha }}"
             if [ "${{ inputs.ai_enrichment }}" = "true" ]; then
-              GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" python ai_enrich.py \
+              COPILOT_GITHUB_TOKEN="${{ secrets.COPILOT_GITHUB_TOKEN }}" python ai_enrich.py \
                 --root "$GITHUB_WORKSPACE_CALLER" --yaml /tmp/infra-relevada.yml \
                 || echo "Enriquecimiento con IA omitido (no bloqueante)."
             fi

@@ -82,10 +82,10 @@ narrativas — "Funciones esenciales", "Roles y responsabilidades",
 no puede completar con confianza y que históricamente quedaban siempre en
 *"No determinado desde el repositorio"*.
 
-`ai_enrich.py` agrega una capa de IA (GitHub Models) que corre DESPUÉS del
-escaneo determinístico, tanto para "2. Desarrollo" como para
-"4. Infraestructura relevada", con reglas estrictas que preservan la
-filosofía de "nunca inventar":
+`ai_enrich.py` agrega una capa de IA (**GitHub Copilot CLI**, invocado como
+subproceso vía `copilot -p`) que corre DESPUÉS del escaneo determinístico,
+tanto para "2. Desarrollo" como para "4. Infraestructura relevada", con
+reglas estrictas que preservan la filosofía de "nunca inventar":
 
 - Solo mira los campos que **siguen en `null`** tras el escaneo. Nunca
   pisa un valor que ya vino del regex/manifiesto.
@@ -97,17 +97,49 @@ filosofía de "nunca inventar":
   de archivos del repo**: si el modelo cita un path que no existe, se
   descarta ese campo (o ese registro completo), no se publica.
 - Es **best-effort y no bloqueante**: si falla por cualquier motivo (sin
-  permiso `models: read`, GitHub Models no habilitado en la organización,
-  rate limit, timeout), el paso se omite y el resto del pipeline sigue
-  igual — los campos sin evidencia simplemente quedan en null, como
-  siempre funcionó.
+  token, CLI no instalada, rate limit, timeout), el paso se omite y el
+  resto del pipeline sigue igual — los campos sin evidencia simplemente
+  quedan en null, como siempre funcionó.
 - Se puede desactivar por repo con `ai_enrichment: false` en el `with:`
   del `docops-sync.yml` del repo consumidor.
 
-Requiere el permiso `models: read` declarado en el workflow consumidor
-(ya incluido en `docops/docs-template/consumer-workflow-example.yml`) —
-los permisos de un workflow reusable nunca pueden ser mayores a los que
-otorga quien lo invoca.
+> **Nota histórica:** la primera versión de este mecanismo usaba GitHub
+> Models (API HTTP separada de Copilot). GitHub Models fue retirado por
+> completo el 30 de julio de 2026 y dejó de responder JSON válido para
+> cualquier cliente, por lo que se reemplazó por Copilot CLI.
+
+### Cómo configurar el token de Copilot CLI (una sola vez, a nivel organización)
+
+Copilot CLI necesita un token propio para autenticarse de forma no
+interactiva; el `GITHUB_TOKEN` automático de Actions **no sirve** (no es
+un formato de token soportado por la CLI). Hace falta:
+
+1. Generar un **Personal Access Token de grano fino** desde una **cuenta
+   personal** que tenga asiento de Copilot asignado:
+   GitHub → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token.
+   - Resource owner: la cuenta personal (NO la organización).
+   - Permisos: habilitar **"Copilot Requests"**.
+   - Expiration: definir una fecha y calendarizar su renovación (el token
+     vence y hay que rotarlo manualmente).
+2. Guardarlo como secret **a nivel organización** (así escala a los ~59
+   repos sin repetir el paso en cada uno):
+   ```
+   gh secret set COPILOT_GITHUB_TOKEN --org acacoop --visibility all --body "<el token>"
+   ```
+3. Cada workflow consumidor (`consumer-workflow-example.yml`) ya pasa
+   `COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}` al workflow
+   reusable — al ser secret de organización, no hace falta declararlo de
+   nuevo en cada repo individual.
+
+**Costo operacional:** cada invocación de `copilot -p` consume una
+"premium request" de la cuota mensual de Copilot asociada al dueño del
+PAT. El pipeline hace hasta 2 invocaciones por repo por push a `main` con
+cambios (una para "Desarrollo", otra para "Infraestructura relevada"). Al
+escalar a toda la organización, estimar el volumen esperado antes de
+activar `ai_enrichment: true` de forma masiva, y considerar fijar un
+modelo económico vía la env var `AI_ENRICHMENT_MODEL` (default:
+`gpt-5-mini`) en vez del modelo por default de Copilot CLI.
 
 ## Aplicación global: rollout automático a toda la organización
 

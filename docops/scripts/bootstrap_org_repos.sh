@@ -138,7 +138,7 @@ Antes de mergear, el equipo dueño de este repo debe:
    \`CONFLUENCE_BASE_URL\`, \`CONFLUENCE_EMAIL\`, \`CONFLUENCE_API_TOKEN\`, \`CONFLUENCE_SPACE_KEY\`.
 3. Completar \`docs/manifest/*.yml\` con los campos de negocio (o esperar a que lo haga la integración con Jira).
 
-El workflow incluye el permiso \`models: read\`, usado para completar con IA (GitHub Models) los campos narrativos que el escaneo no puede determinar solo (siempre citando un archivo real como evidencia; nunca inventa datos). Es opcional: se puede desactivar poniendo \`ai_enrichment: false\` en el \`with:\` del workflow, y si falla por cualquier motivo no interrumpe la publicación.
+El enriquecimiento con IA (campos narrativos que el escaneo no puede determinar solo, siempre citando un archivo real como evidencia; nunca inventa datos) usa GitHub Copilot CLI y requiere el secret \`COPILOT_GITHUB_TOKEN\` (configurado una sola vez a nivel organización, ver [$TEMPLATES_REPO/docops/README.md](https://github.com/$TEMPLATES_REPO/blob/main/docops/README.md)). Es opcional: se puede desactivar poniendo \`ai_enrichment: false\` en el \`with:\` del workflow, y si falta el secret o falla por cualquier motivo no interrumpe la publicación.
 
 Ver [$TEMPLATES_REPO/docops/README.md](https://github.com/$TEMPLATES_REPO/blob/main/docops/README.md) para más detalle." \
       --head "$BRANCH_NAME" \
