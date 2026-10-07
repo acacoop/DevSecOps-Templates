@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import fnmatch
+import json
 import os
 import re
 
@@ -44,12 +45,190 @@ LANGUAGE_BY_EXTENSION = {
     ".go": "Go",
 }
 
+# Paquete npm o pip cuya versión declarada se usa como "version" de cada
+# tecnología de desarrollo, cuando el lenguaje/framework coincide.
+NPM_PACKAGE_BY_FRAMEWORK = {"Express": "express"}
+PY_PACKAGE_BY_FRAMEWORK = {"Flask": "flask", "Django": "django", "FastAPI": "fastapi"}
+
+# Firmas de dependencias de bases de datos conocidas: nombre del paquete ->
+# (motor, tipo de gestor). Cubre los drivers/ORMs más comunes en npm y pip.
+DB_NPM_SIGNATURES = {
+    "pg": ("PostgreSQL", "Relacional"),
+    "mysql": ("MySQL", "Relacional"),
+    "mysql2": ("MySQL", "Relacional"),
+    "sqlite3": ("SQLite", "Relacional"),
+    "better-sqlite3": ("SQLite", "Relacional"),
+    "mongoose": ("MongoDB", "Documental"),
+    "mongodb": ("MongoDB", "Documental"),
+    "redis": ("Redis", "Clave-valor"),
+    "ioredis": ("Redis", "Clave-valor"),
+}
+DB_PY_SIGNATURES = {
+    "psycopg2": ("PostgreSQL", "Relacional"),
+    "psycopg2-binary": ("PostgreSQL", "Relacional"),
+    "pymysql": ("MySQL", "Relacional"),
+    "mysqlclient": ("MySQL", "Relacional"),
+    "pymongo": ("MongoDB", "Documental"),
+    "redis": ("Redis", "Clave-valor"),
+}
+
 
 def iter_source_files(root: str):
     for current_dir, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in EXCLUDED_DIRS]
         for filename in filenames:
             yield os.path.relpath(os.path.join(current_dir, filename), root).replace(os.sep, "/")
+
+
+def _load_json(path: str) -> dict:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f) or {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _clean_version(raw: str | None) -> str | None:
+    """Convierte un rango de versión declarado (ej. '^5.9.2', '>=2.3.0')
+    en el número de versión concreto que lo acompaña."""
+    if not raw:
+        return None
+    match = re.search(r"\d+(\.\d+){0,3}", raw)
+    return match.group(0) if match else raw
+
+
+def _find_upwards(root: str, start_file: str | None, filename: str) -> str | None:
+    """Busca `filename` empezando en el directorio de `start_file` y subiendo
+    hacia la raíz del repo (soporta monorepos donde el manifiesto relevante
+    vive en un subdirectorio como server/ o client/, no en la raíz)."""
+    root_abs = os.path.abspath(root)
+    current = os.path.abspath(
+        os.path.join(root, os.path.dirname(start_file)) if start_file else root
+    )
+    while True:
+        candidate = os.path.join(current, filename)
+        if os.path.isfile(candidate):
+            return os.path.relpath(candidate, root_abs).replace(os.sep, "/")
+        if current == root_abs:
+            break
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+    return None
+
+
+def _parse_requirements_version(path: str, package: str) -> str | None:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+    except OSError:
+        return None
+    pattern = re.compile(rf"^\s*{re.escape(package)}\s*[=<>!~]+\s*([\w.*]+)", re.IGNORECASE | re.MULTILINE)
+    match = pattern.search(content)
+    return match.group(1) if match else None
+
+
+def detect_app_name(root: str, framework_evidence: str | None) -> str | None:
+    """Nombre de la aplicación: el 'name' del manifiesto npm más cercano al
+    código donde se detectó el framework (soporta monorepos), o el nombre
+    de la carpeta del repo como último recurso."""
+    manifest = _find_upwards(root, framework_evidence, "package.json")
+    if manifest:
+        name = _load_json(os.path.join(root, manifest)).get("name")
+        if name:
+            return name
+    return os.path.basename(os.path.abspath(root)) or None
+
+
+def detect_language_version(root: str, language: str | None, language_evidence: str | None) -> tuple[str | None, str | None]:
+    if language == "TypeScript":
+        manifest = _find_upwards(root, language_evidence, "package.json")
+        if manifest:
+            data = _load_json(os.path.join(root, manifest))
+            deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+            raw = deps.get("typescript")
+            if raw:
+                return _clean_version(raw), manifest
+    return None, None
+
+
+def detect_framework_version(root: str, framework: str | None, framework_evidence: str | None) -> tuple[str | None, str | None]:
+    npm_package = NPM_PACKAGE_BY_FRAMEWORK.get(framework)
+    if npm_package:
+        manifest = _find_upwards(root, framework_evidence, "package.json")
+        if manifest:
+            data = _load_json(os.path.join(root, manifest))
+            deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+            raw = deps.get(npm_package)
+            if raw:
+                return _clean_version(raw), manifest
+
+    py_package = PY_PACKAGE_BY_FRAMEWORK.get(framework)
+    if py_package:
+        manifest = _find_upwards(root, framework_evidence, "requirements.txt")
+        if manifest:
+            version = _parse_requirements_version(os.path.join(root, manifest), py_package)
+            if version:
+                return version, manifest
+
+    return None, None
+
+
+def detect_runtime_fallback(root: str, files: list[str]) -> tuple[str | None, str | None]:
+    """Cuando no hay Dockerfile, intenta inferir el runtime Node.js desde
+    .nvmrc o el campo engines.node de algún package.json del repo."""
+    nvmrc = next((f for f in files if os.path.basename(f) == ".nvmrc"), None)
+    if nvmrc:
+        with open(os.path.join(root, nvmrc), "r", encoding="utf-8", errors="ignore") as f:
+            version = f.read().strip()
+        if version:
+            return f"Node.js {version}", nvmrc
+
+    for rel_path in files:
+        if os.path.basename(rel_path) == "package.json":
+            engine = _load_json(os.path.join(root, rel_path)).get("engines", {}).get("node")
+            if engine:
+                return f"Node.js {_clean_version(engine)}", rel_path
+
+    return None, None
+
+
+def detect_databases(root: str, files: list[str]) -> list[dict]:
+    """Detecta motores de base de datos a partir de dependencias declaradas
+    (drivers/ORMs conocidos) en package.json y requirements.txt."""
+    found: dict[str, dict] = {}
+
+    for rel_path in files:
+        if os.path.basename(rel_path) == "package.json":
+            data = _load_json(os.path.join(root, rel_path))
+            deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+            for package, (motor, tipo_de_gestor) in DB_NPM_SIGNATURES.items():
+                if motor not in found and package in deps:
+                    found[motor] = {
+                        "motor": motor,
+                        "tipo_de_gestor": tipo_de_gestor,
+                        "version": _clean_version(deps[package]),
+                        "evidencia": rel_path,
+                    }
+
+        if os.path.basename(rel_path) == "requirements.txt":
+            try:
+                with open(os.path.join(root, rel_path), "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read().lower()
+            except OSError:
+                continue
+            for package, (motor, tipo_de_gestor) in DB_PY_SIGNATURES.items():
+                if motor not in found and package in content:
+                    version = _parse_requirements_version(os.path.join(root, rel_path), package)
+                    found[motor] = {
+                        "motor": motor,
+                        "tipo_de_gestor": tipo_de_gestor,
+                        "version": version,
+                        "evidencia": rel_path,
+                    }
+
+    return list(found.values())
 
 
 def detect_language(files: list[str]) -> tuple[str | None, str | None]:
@@ -134,7 +313,7 @@ def detect_package_manager(root: str, files: list[str], dockerfiles: list[str]) 
     return None, None
 
 
-def detect_app_type(root: str, files: list[str], framework: str | None) -> tuple[str | None, str | None]:
+def detect_app_type(files: list[str], framework: str | None, framework_evidence: str | None) -> tuple[str | None, str | None]:
     has_templates = any("/templates/" in f or f.startswith("templates/") for f in files)
     has_static = any("/static/" in f or f.startswith("static/") for f in files)
 
@@ -146,7 +325,9 @@ def detect_app_type(root: str, files: list[str], framework: str | None) -> tuple
         return "Portal web (server-side rendered)", evidence_file
 
     if framework:
-        return f"Servicio/API ({framework})", None
+        # Antes esto quedaba en None aunque sí teníamos evidencia concreta
+        # (el archivo donde se detectó el framework).
+        return f"Servicio/API ({framework})", framework_evidence
 
     return None, None
 
@@ -158,13 +339,20 @@ def scan(root: str) -> dict:
     framework, framework_evidence = detect_framework(root, files)
     dockerfiles = find_dockerfiles(root, files)
     runtime, runtime_evidence = detect_runtime(root, dockerfiles)
+    if not runtime:
+        runtime, runtime_evidence = detect_runtime_fallback(root, files)
     package_manager, package_manager_evidence = detect_package_manager(root, files, dockerfiles)
-    app_type, app_type_evidence = detect_app_type(root, files, framework)
+    app_type, app_type_evidence = detect_app_type(files, framework, framework_evidence)
+    app_name = detect_app_name(root, framework_evidence)
 
-    return {
+    language_version, language_version_evidence = detect_language_version(root, language, language_evidence)
+    framework_version, framework_version_evidence = detect_framework_version(root, framework, framework_evidence)
+    databases = detect_databases(root, files)
+
+    result = {
         "tipos_de_aplicaciones": [
             {
-                "aplicacion": app_type or None,
+                "aplicacion": app_name,
                 "tipo": app_type,
                 "evidencia_en_repositorio": app_type_evidence,
             }
@@ -172,13 +360,13 @@ def scan(root: str) -> dict:
         "tecnologias_de_desarrollo": {
             "capa_lenguaje": {
                 "tecnologia": language,
-                "version": None,  # requiere inspección más profunda (ej. parsear FROM python:X.Y)
-                "donde_se_detecto": language_evidence,
+                "version": language_version,
+                "donde_se_detecto": language_version_evidence or language_evidence,
             },
             "capa_framework": {
                 "tecnologia": framework,
-                "version": None,
-                "donde_se_detecto": framework_evidence,
+                "version": framework_version,
+                "donde_se_detecto": framework_version_evidence or framework_evidence,
             },
             "capa_runtime": {
                 "tecnologia": runtime,
@@ -192,6 +380,20 @@ def scan(root: str) -> dict:
             },
         },
     }
+
+    if databases:
+        result["mapa_de_bases_de_datos"] = {
+            "tipos_de_bases_de_datos": [
+                {"base": None, "tipo_de_gestor": db["tipo_de_gestor"], "evidencia": db["evidencia"]}
+                for db in databases
+            ],
+            "tecnologias_empleadas": [
+                {"motor": db["motor"], "version": db["version"], "donde_se_detecto": db["evidencia"]}
+                for db in databases
+            ],
+        }
+
+    return result
 
 
 def deep_merge(base: dict, overrides: dict) -> dict:
