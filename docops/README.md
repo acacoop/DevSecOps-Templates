@@ -176,10 +176,46 @@ alguien elija un template al crear el repo): `org-bootstrap-docops.yml`.
    sin escribir nada todavía.
 4. Si la lista es la esperada, volver a correrlo con `dry_run: false` para
    abrir los PRs de verdad.
-5. (Opcional, más adelante) Descomentar el `schedule:` del workflow para
-   que esto corra solo, por ejemplo, una vez por semana, y así los repos
-   creados después también terminen recibiendo su PR de bootstrap sin
-   intervención manual.
+5. El `schedule:` del workflow (`cron: "0 13 * * 1"`, lunes 13:00 UTC) ya
+   está **activo** — corre solo, una vez por semana, sin intervención
+   manual. Esto es lo que hace que un repo creado en cualquier momento
+   termine recibiendo su PR de bootstrap sin que nadie tenga que acordarse
+   de correrlo a mano.
+
+### Estado del rollout (última corrida real, Oct/2026)
+
+- **80 repos candidatos** detectados en la organización (se excluyen
+  forks, templates y repos sin `defaultBranchRef`).
+- **35 repos** ya tenían el pipeline instalado (bootstrap de corridas
+  previas).
+- **45 repos** recibieron un Pull Request `docops/bootstrap-auto` nuevo.
+  De esos, **41 se revisaron y mergearon** (CI verde, sin conflictos); los
+  4 restantes quedaron abiertos para que cada equipo dueño los revise y
+  mergee cuando le resulte conveniente — no es bloqueante: en cuanto se
+  mergeen, el primer push a `main` dispara el relevamiento inicial
+  (Fase 1) igual que en el resto.
+- El script es **idempotente**: si se vuelve a correr (manual o por el
+  schedule semanal) sobre un repo que ya tiene un PR de bootstrap abierto,
+  lo detecta (`gh pr list --head docops/bootstrap-auto`) y lo saltea en
+  vez de reintentar el push, evitando duplicados o errores de
+  `non-fast-forward`.
+- **Fix aplicado**: `gh repo clone` autentica el clone en sí mismo pero no
+  deja un credential helper persistente, por lo que los `git push`
+  posteriores (git puro) fallaban. Se agregó `gh auth setup-git` al inicio
+  del script para que todo push subsiguiente se autentique con el mismo
+  token (`GH_TOKEN` / `ORG_BOOTSTRAP_TOKEN`).
+
+### Dos fases de funcionamiento, por repo
+
+- **Fase 1 — Relevamiento inicial**: ocurre una única vez, en el momento
+  en que se mergea el PR de bootstrap a `main` de ese repo. Como todavía
+  no existe una huella guardada en Confluence, el pipeline escanea y
+  publica las 5 páginas completas sin importar el fingerprint.
+- **Fase 2 — Mantenimiento incremental**: de ahí en adelante, cada push a
+  `main` de ese repo compara la huella actual contra la guardada
+  (`docops:fingerprint`, content property de Confluence). Si no cambió
+  nada relevante (código o Terraform), no se toca Confluence; si cambió,
+  se regenera solo el bloque afectado y se publica una nueva versión.
 
 ### Recomendación adicional: secrets de Confluence a nivel organización
 
