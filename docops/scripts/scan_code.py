@@ -43,7 +43,15 @@ LANGUAGE_BY_EXTENSION = {
     ".java": "Java",
     ".cs": "C#",
     ".go": "Go",
+    ".ps1": "PowerShell",
+    ".psm1": "PowerShell",
+    ".sh": "Shell/Bash",
 }
+
+# Lenguajes que, en ausencia de un framework de servicio/API detectado,
+# suelen indicar una colección de scripts de automatización (no un
+# servicio con ciclo de vida propio).
+SCRIPT_LANGUAGES = {"PowerShell", "Shell/Bash"}
 
 # Paquete npm o pip cuya versión declarada se usa como "version" de cada
 # tecnología de desarrollo, cuando el lenguaje/framework coincide.
@@ -313,7 +321,13 @@ def detect_package_manager(root: str, files: list[str], dockerfiles: list[str]) 
     return None, None
 
 
-def detect_app_type(files: list[str], framework: str | None, framework_evidence: str | None) -> tuple[str | None, str | None]:
+def detect_app_type(
+    files: list[str],
+    framework: str | None,
+    framework_evidence: str | None,
+    language: str | None,
+    language_evidence: str | None,
+) -> tuple[str | None, str | None]:
     has_templates = any("/templates/" in f or f.startswith("templates/") for f in files)
     has_static = any("/static/" in f or f.startswith("static/") for f in files)
 
@@ -329,6 +343,12 @@ def detect_app_type(files: list[str], framework: str | None, framework_evidence:
         # (el archivo donde se detectó el framework).
         return f"Servicio/API ({framework})", framework_evidence
 
+    if language in SCRIPT_LANGUAGES:
+        # Sin framework de servicio detectado pero el lenguaje dominante es
+        # de scripting (PowerShell/Shell): típico de repos de automatización
+        # de IT (ej. tareas de administración, no un servicio con API).
+        return "Script de automatización", language_evidence
+
     return None, None
 
 
@@ -342,7 +362,7 @@ def scan(root: str) -> dict:
     if not runtime:
         runtime, runtime_evidence = detect_runtime_fallback(root, files)
     package_manager, package_manager_evidence = detect_package_manager(root, files, dockerfiles)
-    app_type, app_type_evidence = detect_app_type(files, framework, framework_evidence)
+    app_type, app_type_evidence = detect_app_type(files, framework, framework_evidence, language, language_evidence)
     app_name = detect_app_name(root, framework_evidence)
 
     language_version, language_version_evidence = detect_language_version(root, language, language_evidence)
